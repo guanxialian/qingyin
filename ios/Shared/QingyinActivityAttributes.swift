@@ -4,7 +4,7 @@ import ActivityKit
 /// 灵动岛 / 锁屏实时活动的数据契约。
 /// ⚠️ 这个文件必须同时被「主 App」和「Widget 扩展」两个 target 编译，
 /// ActivityKit 靠类型名匹配主 App 与扩展里的结构体。
-@available(iOS 16.1, *)
+@available(iOS 16.2, *)
 struct QingyinActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         /// 当前歌曲标题
