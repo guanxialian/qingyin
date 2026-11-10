@@ -15,7 +15,7 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     @objc func supported(_ call: CAPPluginCall) {
-        if #available(iOS 16.1, *) {
+        if #available(iOS 16.2, *) {
             call.resolve(["supported": LiveActivityManager.shared.isSupported])
         } else {
             call.resolve(["supported": false])
@@ -23,7 +23,7 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func start(_ call: CAPPluginCall) {
-        guard #available(iOS 16.1, *) else {
+        guard #available(iOS 16.2, *) else {
             call.resolve(["ok": false])
             return
         }
@@ -43,7 +43,7 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func update(_ call: CAPPluginCall) {
-        guard #available(iOS 16.1, *) else {
+        guard #available(iOS 16.2, *) else {
             call.resolve(["ok": false])
             return
         }
@@ -59,7 +59,7 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func end(_ call: CAPPluginCall) {
-        if #available(iOS 16.1, *) {
+        if #available(iOS 16.2, *) {
             LiveActivityManager.shared.end()
         }
         call.resolve()
