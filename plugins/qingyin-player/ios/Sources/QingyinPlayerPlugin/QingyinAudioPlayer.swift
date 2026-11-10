@@ -51,8 +51,24 @@ final class QingyinAudioPlayer {
 
     // MARK: - 加载
 
+    /// 同时支持网络地址与沙盒文件地址；中文/空格的 file:// 路径需要额外解码
+    static func resolveURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("file://") {
+            if let u = URL(string: trimmed), u.isFileURL, FileManager.default.fileExists(atPath: u.path) {
+                return u
+            }
+            let rawPath = trimmed.replacingOccurrences(of: "file://", with: "")
+            let decoded = rawPath.removingPercentEncoding ?? rawPath
+            if FileManager.default.fileExists(atPath: decoded) {
+                return URL(fileURLWithPath: decoded)
+            }
+        }
+        return URL(string: trimmed)
+    }
+
     func load(urlString: String, headers: [String: String], metadata: NowPlayingMetadata, autoplay: Bool, startAt: Double) {
-        guard let url = URL(string: urlString) else {
+        guard let url = QingyinAudioPlayer.resolveURL(urlString) else {
             onError?("播放地址无效")
             return
         }
