@@ -5,8 +5,10 @@
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
-  "files": ["ios", "dist"],
-  "keywords": ["capacitor", "ios"],
+  "keywords": [
+    "capacitor",
+    "ios"
+  ],
   "peerDependencies": {
     "@capacitor/core": "^6.0.0"
   },
