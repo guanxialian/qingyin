@@ -1,0 +1,19 @@
+{
+  "name": "@qingyin/player",
+  "version": "1.0.0",
+  "description": "轻音原生播放器：AVPlayer + 自定义请求头 + 锁屏 Now Playing",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": ["ios", "dist"],
+  "keywords": ["capacitor", "ios"],
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "license": "MIT"
+}
