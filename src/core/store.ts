@@ -14,6 +14,7 @@ import {
 } from './plugin';
 import { parseLrc, mergeTranslation, type LrcLine } from './lrc';
 import { fetchFallbackLyric } from './lyrics';
+import { startLive, updateLive, endLive } from './live';
 import { downloadTrack } from './download';
 import { loadJSON, saveJSON } from './storage';
 import { setProxyBase } from './http';
@@ -475,6 +476,7 @@ export async function playTrack(track: Track, list?: Track[], index?: number) {
     setState({ preparing: false, playing: true });
     pushHistory(track);
     void engine.updateNowPlaying({ ...meta, playing: true, position: 0 });
+    startLive(track, [], 0, track.duration ?? 0, true);
     void loadLyrics(api, track);
     void enrichTrack(api, track);
   } catch (e) {
@@ -716,6 +718,7 @@ export function initStore() {
             position: e.position,
             duration: state.duration,
           });
+          updateLive(state.current, state.lyrics, e.position, state.duration, state.playing);
         }
         break;
       case 'durationchange':
@@ -723,11 +726,18 @@ export function initStore() {
         break;
       case 'play':
         setState({ playing: true });
+        if (state.current) {
+          updateLive(state.current, state.lyrics, state.position, state.duration, true, true);
+        }
         break;
       case 'pause':
         setState({ playing: false });
+        if (state.current) {
+          updateLive(state.current, state.lyrics, state.position, state.duration, false, true);
+        }
         break;
       case 'ended':
+        endLive();
         void next(true);
         break;
       case 'buffering':

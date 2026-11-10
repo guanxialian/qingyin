@@ -39,6 +39,17 @@ node scripts/e2e.mjs    # 无头 Edge 跑通「发现 → 搜索 → 播放 → 
 
 产物是**未签名**的，签名由 iLoader / SideStore 完成。
 
+## 灵动岛 / 锁屏歌词（Live Activity）
+
+- 数据契约：`ios/Shared/QingyinActivityAttributes.swift`（主 App 与 Widget 扩展**各编译一份**，ActivityKit 按类型名匹配）
+- 管理：`ios/Shared/LiveActivityManager.swift`（0.8s 节流更新，避免每半秒都推送一次）
+- Widget 界面：`ios/QingyinWidgets/QingyinLiveActivityWidget.swift`
+  - 灵动岛展开：封面 + 歌名 + 当前歌词 + 下一句 + 剩余时间
+  - 灵动岛收起：音符图标 + 6 个字以内的歌词切片
+  - 锁屏卡片：封面 / 歌名 / 歌手 / 当前歌词 / 下一句 / 进度条
+- JS 桥：`src/core/live.ts`，由 `src/core/store.ts` 在播放、暂停、进度更新、切换歌曲时调用；网页端自动 no-op
+- 工程接线：`ios/scripts/add-widget-target.rb`（CI 里在 `pod install` 之后执行，自动建 target、嵌扩展、打开 `NSSupportsLiveActivities`）
+
 ## 已知限制
 
 - 只支持竖屏、iOS 15+。

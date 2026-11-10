@@ -40,6 +40,10 @@ jobs:
         working-directory: ios/App
         run: pod install --repo-update
 
+      - name: Add Live Activity widget target
+        working-directory: ios/App
+        run: ruby ../scripts/add-widget-target.rb
+
       - name: Build archive (unsigned)
         working-directory: ios/App
         run: |
