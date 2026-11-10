@@ -21,7 +21,7 @@ raise "找不到 target #{APP_TARGET}" unless app
 # ---------- 1. 建扩展 target ----------
 widget = project.targets.find { |t| t.name == WIDGET_NAME }
 if widget.nil?
-  widget = project.new_target(:app_extension, WIDGET_NAME, :ios, '16.1', nil, :swift)
+  widget = project.new_target(:app_extension, WIDGET_NAME, :ios, '16.2', nil, :swift)
   puts "已创建 target #{WIDGET_NAME}"
 else
   puts "target #{WIDGET_NAME} 已存在，更新配置"
@@ -37,7 +37,7 @@ widget.build_configurations.each do |config|
   s['WRAPPER_EXTENSION'] = 'appex'
   s['APPLICATION_EXTENSION_API_ONLY'] = 'YES'
   s['INFOPLIST_FILE'] = '../QingyinWidgets/Info.plist'
-  s['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
+  s['IPHONEOS_DEPLOYMENT_TARGET'] = '16.2'
   s['SWIFT_VERSION'] = '5.0'
   s['TARGETED_DEVICE_FAMILY'] = '1,2'
   s['SKIP_INSTALL'] = 'YES'
