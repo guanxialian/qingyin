@@ -15,7 +15,7 @@ import {
 import { parseLrc, mergeTranslation, type LrcLine } from './lrc';
 import { fetchFallbackLyric } from './lyrics';
 import { startLive, updateLive, endLive } from './live';
-import { downloadTrack } from './download';
+import { downloadTrack, removeDownloadFile } from './download';
 import { loadJSON, saveJSON } from './storage';
 import { setProxyBase } from './http';
 import type {
@@ -60,6 +60,10 @@ export interface DownloadRecord {
   fileName: string;
   uri?: string;
   at: number;
+  /** 整首歌的元信息，离线时靠它重建播放队列 */
+  track?: Track;
+  /** 下载时一并抓下来的歌词（离线歌词） */
+  lrc?: string;
 }
 
 export interface AppState {
@@ -442,6 +446,24 @@ function pushHistory(track: Track) {
   setState({ history });
 }
 
+/** 已下载的歌曲：本地文件优先，不依赖网络和音源插件 */
+export function findDownload(track: Track): DownloadRecord | undefined {
+  const key = trackKey(track, track.platform);
+  return state.downloads.find((d) => (d.track ? trackKey(d.track, track.platform) : d.key.split(':').slice(0, 2).join(':')) === key && d.uri);
+}
+
+/** 把下载记录还原成可播放的 Track */
+export function downloadToTrack(rec: DownloadRecord): Track {
+  return (
+    rec.track ?? {
+      id: rec.fileName,
+      title: rec.title,
+      artist: rec.artist,
+      platform: rec.key.split(':')[0] ?? 'local',
+    }
+  );
+}
+
 export async function playTrack(track: Track, list?: Track[], index?: number) {
   const queue = list ?? state.queue;
   const qIndex =
@@ -461,6 +483,30 @@ export async function playTrack(track: Track, list?: Track[], index?: number) {
     lyricLoading: true,
     playerOpen: true,
   });
+
+  const local = findDownload(track);
+  if (local?.uri) {
+    // 离线：直接读沙盒里的文件，不联网、不调插件
+    const meta = {
+      title: local.track?.title ?? local.title,
+      artist: local.track?.artist ?? local.artist,
+      album: local.track?.album,
+      artwork: local.track?.artwork,
+      duration: local.track?.duration,
+    };
+    try {
+      await engine.load(local.uri, undefined, meta);
+      setState({ preparing: false, playing: true, duration: meta.duration ?? state.duration });
+      pushHistory(track);
+      void engine.updateNowPlaying({ ...meta, playing: true, position: 0, duration: meta.duration ?? 0 });
+      startLive(track, [], 0, meta.duration ?? 0, true);
+      if (local.lrc) applyRawLyric(local.lrc);
+      else setState({ lyrics: [], lyricLoading: false });
+      return;
+    } catch (e) {
+      console.error('[qingyin] local playback failed, fallback to network', e);
+    }
+  }
 
   try {
     const api = apiFor(track.platform);
@@ -594,6 +640,18 @@ export async function reloadSource(track: Track) {
 
 /* ------------------------------ 歌词 ------------------------------ */
 
+function applyRawLyric(raw: string) {
+  // 常见格式：一段带时间戳的原文，可选的第二段翻译
+  const blocks = raw.split(/\n\s*\n/);
+  let main = parseLrc(blocks[0]);
+  if (blocks.length > 1) {
+    const extra = parseLrc(blocks.slice(1).join('\n'));
+    if (extra.length) main = mergeTranslation(main, extra);
+  }
+  setState({ lyrics: main, lyricLoading: false });
+  return main;
+}
+
 async function loadLyrics(api: ReturnType<typeof apiFor>, track: Track) {
   let raw = await pluginLyric(api, track);
   if (!raw) {
@@ -604,14 +662,7 @@ async function loadLyrics(api: ReturnType<typeof apiFor>, track: Track) {
     setState({ lyrics: [], lyricLoading: false });
     return;
   }
-  // 常见格式：一段带时间戳的原文，可选的第二段翻译
-  const blocks = raw.split(/\n\s*\n/);
-  let main = parseLrc(blocks[0]);
-  if (blocks.length > 1) {
-    const extra = parseLrc(blocks.slice(1).join('\n'));
-    if (extra.length) main = mergeTranslation(main, extra);
-  }
-  setState({ lyrics: main, lyricLoading: false });
+  applyRawLyric(raw);
   if (state.current) {
     void engine.updateNowPlaying({
       ...metaOf(state.current),
@@ -649,6 +700,13 @@ export async function downloadCurrentOr(track: Track) {
     const source = await pluginMediaSource(api, track, state.quality);
     toast('开始下载…');
     const res = await downloadTrack(track, source, state.quality);
+    // 歌词一并存下来，断网也有词
+    let lrc: string | undefined;
+    try {
+      lrc = (await pluginLyric(api, track)) || (await fetchFallbackLyric(track.title, track.artist ?? '')) || undefined;
+    } catch {
+      lrc = undefined;
+    }
     const downloads: DownloadRecord[] = [
       {
         key: `${trackKey(track, track.platform)}:${Date.now()}`,
@@ -657,16 +715,33 @@ export async function downloadCurrentOr(track: Track) {
         fileName: res.fileName,
         uri: res.uri,
         at: Date.now(),
+        track,
+        lrc,
       },
       ...state.downloads,
     ].slice(0, 200);
     saveJSON(STORAGE_DOWNLOADS, downloads);
     setState({ downloads });
-    toast(`已保存：${res.fileName}`);
+    toast(`已保存到 App 内：${res.fileName}`);
   } catch (e) {
     console.error("[qingyin]", e);
     toast((e as Error).message || '下载失败');
   }
+}
+
+/** 播放某条下载记录（收藏页「下载」列表里点一行） */
+export async function playDownload(rec: DownloadRecord) {
+  const list = state.downloads.map(downloadToTrack);
+  const index = Math.max(0, state.downloads.findIndex((d) => d.key === rec.key));
+  await playTrack(downloadToTrack(rec), list, index);
+}
+
+export async function deleteDownload(rec: DownloadRecord) {
+  await removeDownloadFile(rec.fileName);
+  const downloads = state.downloads.filter((d) => d.key !== rec.key);
+  saveJSON(STORAGE_DOWNLOADS, downloads);
+  setState({ downloads });
+  toast('已删除');
 }
 
 export function clearHistory() {
