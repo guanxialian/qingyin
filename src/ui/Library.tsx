@@ -1,8 +1,21 @@
 import { useState } from 'react';
-import { clearHistory, openDetail, playTrack, useStore } from '../core/store';
+import {
+  clearHistory,
+  deleteDownload,
+  openDetail,
+  playDownload,
+  playTrack,
+  useStore,
+} from '../core/store';
 import { EmptyState, TrackRow, Cover } from './TrackRow';
-import { formatTime } from '../core/lrc';
-import { IconDownload, IconHeart, IconMusic } from './icons';
+import { IconDownload, IconHeart, IconMusic, IconTrash } from './icons';
+
+function dateOf(ts: number) {
+  const d = new Date(ts);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}-${dd}`;
+}
 
 type Seg = 'favorite' | 'history' | 'download';
 
@@ -87,18 +100,35 @@ export function Library() {
         downloads.length === 0 ? (
           <EmptyState
             title="还没有下载"
-            subtitle="播放页右下角的下载按钮会把歌曲保存到手机文件里"
+            subtitle="播放页右下角的下载按钮会把歌曲存进 App 内，断网也能听"
           />
         ) : (
           <div className="list">
             {downloads.map((d) => (
-              <div className="row" key={d.key}>
-                <Cover size={46} />
+              <div
+                className="row"
+                key={d.key}
+                onClick={() => void playDownload(d)}
+                role="button"
+                tabIndex={0}
+              >
+                <Cover size={46} src={d.track?.artwork} />
                 <div className="row-main">
                   <div className="row-title">{d.title}</div>
-                  <div className="row-sub">{d.artist || '未知歌手'} · {d.fileName}</div>
+                  <div className="row-sub">
+                    {d.artist || '未知歌手'} · {dateOf(d.at)}
+                  </div>
                 </div>
-                <div className="row-dur">{formatTime((Date.now() - d.at) / 1000)}前</div>
+                <button
+                  className="icon-btn"
+                  aria-label="删除下载"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void deleteDownload(d);
+                  }}
+                >
+                  <IconTrash size={18} />
+                </button>
               </div>
             ))}
           </div>
