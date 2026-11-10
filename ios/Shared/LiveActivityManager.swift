@@ -3,7 +3,7 @@ import ActivityKit
 
 /// 管理「轻音」的实时活动（灵动岛 + 锁屏卡片）。
 /// 只在 App target 里编译；Widget 扩展只读同一份 Attributes。
-@available(iOS 16.1, *)
+@available(iOS 16.2, *)
 final class LiveActivityManager {
     static let shared = LiveActivityManager()
 
