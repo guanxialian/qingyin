@@ -88,6 +88,15 @@ export async function downloadTrack(
   return { fileName };
 }
 
+/** 删除已下载的文件（只在原生端有实际文件） */
+export async function removeDownloadFile(fileName: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  await Filesystem.deleteFile({
+    path: `轻音/${fileName}`,
+    directory: Directory.Documents,
+  }).catch(() => undefined);
+}
+
 export async function shareFile(fileName: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   const uri = await Filesystem.getUri({
