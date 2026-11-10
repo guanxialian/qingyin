@@ -4,6 +4,4 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 
-dangerouslyAllowAllBuilds: true
-
 nodeLinker: hoisted
