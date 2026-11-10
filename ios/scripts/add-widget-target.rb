@@ -31,6 +31,11 @@ app_bundle_id = app.build_configurations.first.build_settings['PRODUCT_BUNDLE_ID
 widget.build_configurations.each do |config|
   s = config.build_settings
   s['PRODUCT_BUNDLE_IDENTIFIER'] = "#{app_bundle_id}#{BUNDLE_SUFFIX}"
+  # 必须显式给定，否则 FULL_PRODUCT_NAME 会退化成空串，产出 '.appex'
+  s['PRODUCT_NAME'] = WIDGET_NAME
+  s['EXECUTABLE_NAME'] = WIDGET_NAME
+  s['WRAPPER_EXTENSION'] = 'appex'
+  s['APPLICATION_EXTENSION_API_ONLY'] = 'YES'
   s['INFOPLIST_FILE'] = '../QingyinWidgets/Info.plist'
   s['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
   s['SWIFT_VERSION'] = '5.0'
