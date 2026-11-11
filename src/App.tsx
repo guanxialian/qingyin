@@ -31,9 +31,9 @@ const TABS: { id: TabId; label: string; icon: (p: { size?: number }) => JSX.Elem
 ];
 
 const TITLES: Record<TabId, { title: string; sub: string }> = {
-  discover: { title: '轻音', sub: '精简音源播放器' },
+  discover: { title: 'K-ON', sub: '精简音源播放器' },
   search: { title: '搜索', sub: '跨音源找歌' },
-  library: { title: '我的音乐', sub: '收藏 · 记录 · 下载' },
+  library: { title: '我的音乐', sub: '收藏 · 最近 · 歌单 · 下载' },
   settings: { title: '设置', sub: '音源 · 音质 · 关于' },
 };
 
