@@ -23,6 +23,7 @@ import { logEvent } from './debug';
 import type {
   InstalledPlugin,
   MusicItem,
+  Playlist,
   Quality,
   TopListGroup,
   TopListItem,
@@ -88,6 +89,8 @@ export interface AppState {
   favorites: Track[];
   history: Track[];
   downloads: DownloadRecord[];
+  playlists: Playlist[];
+  shuffle: boolean;
 
   current: Track | null;
   queue: Track[];
@@ -111,6 +114,8 @@ const STORAGE_FAVORITES = 'favorites';
 const STORAGE_HISTORY = 'history';
 const STORAGE_DOWNLOADS = 'downloads';
 const STORAGE_SETTINGS = 'settings';
+const STORAGE_PLAYLISTS = 'playlists';
+const STORAGE_SHUFFLE = 'shuffle';
 
 interface PersistedSettings {
   quality: Quality;
@@ -153,6 +158,8 @@ let state: AppState = {
   favorites: loadJSON<Track[]>(STORAGE_FAVORITES, []),
   history: loadJSON<Track[]>(STORAGE_HISTORY, []),
   downloads: loadJSON<DownloadRecord[]>(STORAGE_DOWNLOADS, []),
+  playlists: loadJSON<Playlist[]>(STORAGE_PLAYLISTS, []),
+  shuffle: loadJSON<boolean>(STORAGE_SHUFFLE, false),
 
   current: null,
   queue: [],
@@ -567,9 +574,27 @@ export async function playAt(index: number, auto = false) {
   await playTrack(track, state.queue, index, auto);
 }
 
+export function toggleShuffle() {
+  const shuffle = !state.shuffle;
+  saveJSON(STORAGE_SHUFFLE, shuffle);
+  setState({ shuffle });
+  toast(shuffle ? '随机播放已开启' : '顺序播放');
+}
+
+function randomIndexExcept(current: number, total: number): number {
+  if (total <= 1) return 0;
+  let pick = current;
+  while (pick === current) pick = Math.floor(Math.random() * total);
+  return pick;
+}
+
 export async function next(auto = false) {
   const { queue, queueIndex } = state;
   if (!queue.length) return;
+  if (state.shuffle) {
+    await playAt(randomIndexExcept(queueIndex, queue.length), auto);
+    return;
+  }
   if (queueIndex + 1 >= queue.length) {
     if (auto) {
       setState({ playing: false, position: 0 });
@@ -587,6 +612,10 @@ export async function prev() {
   if (position > 3.5) {
     await engine.seek(0);
     setState({ position: 0 });
+    return;
+  }
+  if (state.shuffle) {
+    await playAt(randomIndexExcept(queueIndex, state.queue.length));
     return;
   }
   if (queueIndex <= 0) {
@@ -721,6 +750,88 @@ export function toggleFavorite(track: Track) {
   saveJSON(STORAGE_FAVORITES, favorites);
   setState({ favorites });
   toast(exists ? '已取消收藏' : '已收藏');
+}
+
+/* -------------------------------- 自建歌单 -------------------------------- */
+
+function persistPlaylists(playlists: Playlist[]) {
+  saveJSON(STORAGE_PLAYLISTS, playlists);
+  setState({ playlists });
+}
+
+export function createPlaylist(name: string): string {
+  const trimmed = name.trim().slice(0, 30) || '新歌单';
+  const playlist: Playlist = {
+    id: 'pl-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: trimmed,
+    tracks: [],
+    createdAt: Date.now(),
+  };
+  persistPlaylists([...state.playlists, playlist]);
+  toast('已创建歌单「' + trimmed + '」');
+  return playlist.id;
+}
+
+export function renamePlaylist(id: string, name: string) {
+  const trimmed = name.trim().slice(0, 30);
+  if (!trimmed) return;
+  persistPlaylists(state.playlists.map((p) => (p.id === id ? { ...p, name: trimmed } : p)));
+}
+
+export function deletePlaylist(id: string) {
+  persistPlaylists(state.playlists.filter((p) => p.id !== id));
+  toast('已删除歌单');
+}
+
+export function addToPlaylist(id: string, track: Track) {
+  const playlist = state.playlists.find((p) => p.id === id);
+  if (!playlist) return;
+  const exists = playlist.tracks.some(
+    (t) => trackKey(t, t.platform) === trackKey(track, track.platform),
+  );
+  if (exists) {
+    toast('这首歌已经在歌单里了');
+    return;
+  }
+  persistPlaylists(
+    state.playlists.map((p) => (p.id === id ? { ...p, tracks: [...p.tracks, { ...track }] } : p)),
+  );
+  toast('已加入「' + playlist.name + '」');
+}
+
+export function removeFromPlaylist(id: string, track: Track) {
+  persistPlaylists(
+    state.playlists.map((p) =>
+      p.id === id
+        ? {
+            ...p,
+            tracks: p.tracks.filter(
+              (t) => trackKey(t, t.platform) !== trackKey(track, track.platform),
+            ),
+          }
+        : p,
+    ),
+  );
+  toast('已从歌单移除');
+}
+
+export async function playPlaylist(id: string, startIndex = 0) {
+  const playlist = state.playlists.find((p) => p.id === id);
+  if (!playlist?.tracks.length) {
+    toast('歌单还是空的');
+    return;
+  }
+  if (state.shuffle) {
+    const shuffled = [...playlist.tracks];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    await playTrack(shuffled[0], shuffled, 0);
+    return;
+  }
+  const track = playlist.tracks[Math.min(startIndex, playlist.tracks.length - 1)];
+  await playTrack(track, playlist.tracks, playlist.tracks.indexOf(track));
 }
 
 export async function downloadCurrentOr(track: Track) {
