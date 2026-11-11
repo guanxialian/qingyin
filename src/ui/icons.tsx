@@ -170,6 +170,18 @@ export const IconGear = (p: P) =>
     </>,
   );
 
+export const IconShuffle = (p: P) =>
+  base(
+    { ...p },
+    <>
+      <path d="M3 6h3l12 12h3" />
+      <path d="M3 18h3l4-4" />
+      <path d="M14 6l4-4" />
+      <path d="M18 2l3 3-3 3" />
+      <path d="M18 16l3 3-3 3" />
+    </>,
+  );
+
 export const IconRefresh = (p: P) =>
   base(
     { ...p },
