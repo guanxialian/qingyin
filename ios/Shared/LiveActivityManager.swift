@@ -12,6 +12,17 @@ final class LiveActivityManager {
 
     var isSupported: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
+    /// 冷启动后系统里可能还留着一块旧的实时活动，先接管它，避免出现两块卡片
+    func adoptExisting() {
+        let running = Activity<QingyinActivityAttributes>.activities
+        NSLog("[QingyinLive] 现存活动数量 \(running.count)")
+        guard let first = running.first else { return }
+        activity = first
+        for extra in running.dropFirst() {
+            Task { await extra.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
     private init() {}
 
     /// 开始或复用：同一首歌就更新，不同歌就结束旧的再开新的
@@ -26,7 +37,11 @@ final class LiveActivityManager {
         duration: Double,
         playing: Bool
     ) {
-        guard isSupported else { return }
+        guard isSupported else {
+            NSLog("[QingyinLive] 实时活动被系统关闭")
+            return
+        }
+        if activity == nil { adoptExisting() }
         let state = QingyinActivityAttributes.ContentState(
             title: title,
             artist: artist,
@@ -49,6 +64,7 @@ final class LiveActivityManager {
                 content: ActivityContent(state: state, staleDate: nil),
                 pushType: nil
             )
+            NSLog("[QingyinLive] 已开新活动 \(trackId)")
         } catch {
             NSLog("[QingyinLive] 启动实时活动失败: \(error.localizedDescription)")
         }
