@@ -66,6 +66,41 @@ async function saveWeb(source: MediaSource, fileName: string): Promise<string> {
   return fileName;
 }
 
+function simpleHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 1) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** 把音频临时落到 Cache 目录，用于「在线放不了时先缓存再播」 */
+export async function cacheSource(source: MediaSource, key: string): Promise<string> {
+  if (!isNative) throw new Error('仅原生端支持缓存播放');
+  const dir = 'qy-cache';
+  const name = `c-${simpleHash(key)}${guessExt(source.url)}`;
+  const res = await CapacitorHttp.request({
+    url: source.url,
+    method: 'GET',
+    headers: source.headers ?? {},
+    responseType: 'blob',
+    connectTimeout: 30000,
+    readTimeout: 120000,
+  });
+  if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
+  const base64 = String(res.data ?? '');
+  if (!base64) throw new Error('没有拿到音频数据');
+  await Filesystem.mkdir({ path: dir, directory: Directory.Cache, recursive: true }).catch(
+    () => undefined,
+  );
+  await Filesystem.writeFile({
+    path: `${dir}/${name}`,
+    data: base64,
+    directory: Directory.Cache,
+    recursive: true,
+  });
+  const uri = await Filesystem.getUri({ path: `${dir}/${name}`, directory: Directory.Cache });
+  return uri.uri;
+}
+
 export interface DownloadResult {
   fileName: string;
   uri?: string;
