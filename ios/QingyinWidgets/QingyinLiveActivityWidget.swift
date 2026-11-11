@@ -93,23 +93,21 @@ struct QingyinLiveActivity: Widget {
 private struct Cover: View {
     let url: String
     let size: CGFloat
+    @State private var image: UIImage?
 
     var body: some View {
         Group {
-            if let u = URL(string: url), !url.isEmpty {
-                AsyncImage(url: u) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        placeholder
-                    }
-                }
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
             } else {
                 placeholder
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        .task(id: url) {
+            image = await CoverLoader.shared.load(url)
+        }
     }
 
     private var placeholder: some View {
@@ -180,5 +178,48 @@ private struct LockScreenCard: View {
             }
         }
         .padding(14)
+    }
+}
+
+/// Widget 扩展里自己拉封面：B 站图床要带 Referer，AsyncImage 加不了头，
+/// 所以用 URLSession 拉一次并缓存到扩展自己的 Caches 目录。
+final class CoverLoader {
+    static let shared = CoverLoader()
+    private let memory = NSCache<NSString, UIImage>()
+    private lazy var dir: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let d = base.appendingPathComponent("qy-cover", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
+
+    private func key(_ s: String) -> String {
+        var h: UInt64 = 5381
+        for b in s.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return String(h, radix: 16)
+    }
+
+    func load(_ urlString: String) async -> UIImage? {
+        guard !urlString.isEmpty, let u = URL(string: urlString) else { return nil }
+        let k = key(urlString) as NSString
+        if let hit = memory.object(forKey: k) { return hit }
+        let file = dir.appendingPathComponent("\(k).img")
+        if let data = try? Data(contentsOf: file), let img = UIImage(data: data) {
+            memory.setObject(img, forKey: k)
+            return img
+        }
+        var req = URLRequest(url: u)
+        req.timeoutInterval = 8
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+        if let host = u.host, host.contains("hdslb.com") || host.contains("bilibili") {
+            req.setValue("https://www.bilibili.com/", forHTTPHeaderField: "Referer")
+        }
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, http.statusCode < 400,
+              let img = UIImage(data: data) else { return nil }
+        memory.setObject(img, forKey: k)
+        try? data.write(to: file)
+        return img
     }
 }

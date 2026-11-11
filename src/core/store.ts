@@ -15,7 +15,7 @@ import {
 import { parseLrc, mergeTranslation, type LrcLine } from './lrc';
 import { fetchFallbackLyric } from './lyrics';
 import { fixBilibiliSource } from './bili';
-import { startLive, updateLive, endLive } from './live';
+import { startLive, updateLive, endLive, syncLiveLyrics } from './live';
 import { downloadTrack, removeDownloadFile, cacheSource } from './download';
 import { loadJSON, saveJSON } from './storage';
 import { setProxyBase } from './http';
@@ -512,7 +512,7 @@ export async function playTrack(track: Track, list?: Track[], index?: number, au
       pushHistory(track);
       void engine.updateNowPlaying({ ...meta, playing: true, position: 0, duration: meta.duration ?? 0 });
       startLive(track, [], 0, meta.duration ?? 0, true);
-      if (local.lrc) applyRawLyric(local.lrc);
+      if (local.lrc) applyRawLyric(local.lrc, track);
       else setState({ lyrics: [], lyricLoading: false });
       return;
     } catch (e) {
@@ -697,7 +697,7 @@ export async function reloadSource(track: Track) {
 
 /* ------------------------------ 歌词 ------------------------------ */
 
-function applyRawLyric(raw: string) {
+function applyRawLyric(raw: string, track?: Track) {
   // 常见格式：一段带时间戳的原文，可选的第二段翻译
   const blocks = raw.split(/\n\s*\n/);
   let main = parseLrc(blocks[0]);
@@ -706,6 +706,7 @@ function applyRawLyric(raw: string) {
     if (extra.length) main = mergeTranslation(main, extra);
   }
   setState({ lyrics: main, lyricLoading: false });
+  if (track && main.length) syncLiveLyrics(track, main);
   return main;
 }
 
@@ -719,7 +720,7 @@ async function loadLyrics(api: ReturnType<typeof apiFor>, track: Track) {
     setState({ lyrics: [], lyricLoading: false });
     return;
   }
-  const parsed = applyRawLyric(raw);
+  const parsed = applyRawLyric(raw, track);
   if (state.current) {
     updateLive(state.current, parsed, state.position, state.duration, state.playing, true);
     void engine.updateNowPlaying({

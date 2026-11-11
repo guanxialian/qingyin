@@ -12,7 +12,20 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "end", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "supported", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setLyrics", returnType: CAPPluginReturnPromise),
     ]
+
+    override public func load() {
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("QyPlayerTick"),
+            object: nil,
+            queue: .main
+        ) { note in
+            guard #available(iOS 16.2, *) else { return }
+            let position = (note.userInfo?["position"] as? Double) ?? 0
+            LiveActivityManager.shared.sync(position: position)
+        }
+    }
 
     @objc func supported(_ call: CAPPluginCall) {
         if #available(iOS 16.2, *) {
@@ -40,6 +53,24 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
             playing: call.getBool("playing") ?? true
         )
         call.resolve(["ok": true])
+    }
+
+    @objc func setLyrics(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else {
+            call.resolve(["ok": false])
+            return
+        }
+        let raw = (call.options["lines"] as? [[String: Any]]) ?? []
+        var lines: [QyLyricLine] = []
+        lines.reserveCapacity(raw.count)
+        for item in raw {
+            let time = (item["time"] as? Double) ?? Double((item["time"] as? Int) ?? 0)
+            let text = (item["text"] as? String) ?? ""
+            if text.isEmpty { continue }
+            lines.append(QyLyricLine(time: time, text: text))
+        }
+        LiveActivityManager.shared.setLyrics(lines: lines)
+        call.resolve(["ok": true, "count": lines.count])
     }
 
     @objc func update(_ call: CAPPluginCall) {

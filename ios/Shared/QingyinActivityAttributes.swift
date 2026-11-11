@@ -28,3 +28,10 @@ struct QingyinActivityAttributes: ActivityAttributes {
     /// 用曲目 id 区分不同的实时活动
     var trackId: String
 }
+
+/// 传进原生侧的歌词行，供实时活动在后台自行对齐时间轴
+@available(iOS 16.2, *)
+struct QyLyricLine: Codable {
+    let time: Double
+    let text: String
+}

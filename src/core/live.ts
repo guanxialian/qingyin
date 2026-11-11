@@ -9,6 +9,7 @@ import { logEvent } from './debug';
  */
 
 interface LiveBridge {
+  setLyrics?(opts: Record<string, unknown>): Promise<unknown>;
   start(opts: Record<string, unknown>): Promise<unknown>;
   update(opts: Record<string, unknown>): Promise<unknown>;
   end(): Promise<unknown>;
@@ -100,6 +101,20 @@ export function updateLive(
         logEvent('live.update.err', msg);
       }
     });
+}
+
+/** 把整份歌词时间轴交给原生：锁屏后 JS 会被挂起，由原生自己对齐 */
+export function syncLiveLyrics(track: Track, lines: LrcLine[]) {
+  const plugin = bridge();
+  if (!plugin?.setLyrics) return;
+  const id = `${track.platform}:${track.id}`;
+  const payload = lines
+    .filter((l) => l.text && l.text.trim())
+    .map((l) => ({ time: l.time, text: l.text }));
+  void plugin
+    .setLyrics({ trackId: id, lines: payload })
+    .then(() => logEvent('live.lyrics', `${id} | ${payload.length} 行`))
+    .catch((e) => logEvent('live.lyrics.err', String((e as Error)?.message ?? e)));
 }
 
 export function endLive() {
