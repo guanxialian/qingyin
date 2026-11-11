@@ -94,6 +94,13 @@ export interface Track extends MusicItem {
   platform: string;
 }
 
+export interface Playlist {
+  id: string;
+  name: string;
+  tracks: Track[];
+  createdAt: number;
+}
+
 export type Quality = 'low' | 'standard' | 'high' | 'super';
 
 export const QUALITY_LABEL: Record<Quality, string> = {
