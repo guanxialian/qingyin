@@ -106,7 +106,7 @@ shared_group.files.each do |f|
 end
 
 # Capacitor 桥接插件必须编进 App，否则 JS 侧 window.Capacitor.Plugins.QingyinLive 不存在
-plugin_swift = File.expand_path('App/QingyinLivePlugin.swift', __dir__)
+plugin_swift = File.expand_path('../App/App/QingyinLivePlugin.swift', __dir__)
 raise "缺少 #{plugin_swift}" unless File.exist?(plugin_swift)
 app_group = project.main_group.children.find { |c| c.respond_to?(:display_name) && c.display_name == 'App' }
 app_group ||= project.main_group
