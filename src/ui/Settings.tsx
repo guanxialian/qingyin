@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   addPluginFromCode,
   addPluginFromUrl,
@@ -10,6 +10,9 @@ import {
   useStore,
 } from '../core/store';
 import { QUALITY_LABEL, type Quality } from '../core/types';
+import { engine } from '../core/engine';
+import { getLogLines } from '../core/debug';
+import { liveStatus, liveSupported } from '../core/live';
 import { IconLink, IconPlus, IconTrash } from './icons';
 
 const SAMPLE_PLUGIN =
@@ -27,6 +30,22 @@ export function Settings() {
   const [showPaste, setShowPaste] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [proxyDraft, setProxyDraft] = useState(proxy);
+  const [liveText, setLiveText] = useState(liveSupported() ? '检查中…' : '无原生插件');
+  const [refresh, setRefresh] = useState(0);
+  const logs = getLogLines();
+  const envText = `${/iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : navigator.platform || 'Web'} · ${(navigator.userAgent.match(/OS (\d+[_\d]+)/)?.[1] ?? '').replace(/_/g, '.')}`;
+
+  useEffect(() => {
+    if (!liveSupported()) {
+      setLiveText('无原生插件（网页版）');
+      return;
+    }
+    let alive = true;
+    void liveStatus().then((t) => alive && setLiveText(t));
+    return () => {
+      alive = false;
+    };
+  }, [refresh]);
 
   async function importFromUrl(target: string) {
     setBusy(true);
@@ -204,6 +223,48 @@ export function Settings() {
           </div>
           <div className="settings-hint">
             仅在电脑/手机浏览器里预览时需要（绕过 CORS）。装成 iOS App 后走原生请求，不需要代理。
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-title">诊断</div>
+        <div className="settings-card">
+          <div className="about-row">
+            <span>运行环境</span>
+            <span className="muted">{envText}</span>
+          </div>
+          <div className="about-row">
+            <span>播放器</span>
+            <span className="muted">{engine.usesNativePlayer ? 'AVPlayer（原生）' : 'HTML5 Audio'}</span>
+          </div>
+          <div className="about-row">
+            <span>灵动岛 / 实时活动</span>
+            <span className="muted">{liveText}</span>
+          </div>
+          {logs.length ? (
+            <pre className="diag-log">{logs.join('\n')}</pre>
+          ) : (
+            <div className="settings-hint">还没有日志。播放一首歌后再回来看看。</div>
+          )}
+          <div className="settings-actions">
+            <button
+              className="ghost-btn"
+              disabled={!logs.length}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText([`env: ${envText}`, `live: ${liveText}`, ...logs].join('\n'));
+                  toast('诊断信息已复制');
+                } catch {
+                  toast('复制失败');
+                }
+              }}
+            >
+              复制诊断信息
+            </button>
+            <button className="ghost-btn" onClick={() => setRefresh((v) => v + 1)}>
+              刷新
+            </button>
           </div>
         </div>
       </section>
