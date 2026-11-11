@@ -104,19 +104,28 @@ shared_group.files.each do |f|
   next if f.path.to_s.end_with?('QingyinActivityAttributes.swift')
   app_additions << f if f.path.to_s.end_with?('LiveActivityManager.swift')
 end
-plugin_swift = File.expand_path('App/QingyinLivePlugin.swift', __dir__)
-if File.exist?(plugin_swift)
-  app_group = project.main_group.children.find { |c| c.respond_to?(:display_name) && c.display_name == 'App' }
-  ref = app_group&.files&.find { |f| File.basename(f.path.to_s) == 'QingyinLivePlugin.swift' }
-  ref ||= app_group.new_reference(plugin_swift) if app_group
-  app_additions << ref if ref
-end
 
-app_additions.compact.each do |ref|
-  next if ref.nil?
+# Capacitor 桥接插件必须编进 App，否则 JS 侧 window.Capacitor.Plugins.QingyinLive 不存在
+plugin_swift = File.expand_path('App/QingyinLivePlugin.swift', __dir__)
+raise "缺少 #{plugin_swift}" unless File.exist?(plugin_swift)
+app_group = project.main_group.children.find { |c| c.respond_to?(:display_name) && c.display_name == 'App' }
+app_group ||= project.main_group
+plugin_ref = project.files.find { |f| File.basename(f.path.to_s) == 'QingyinLivePlugin.swift' }
+plugin_ref ||= if app_group.respond_to?(:new_reference)
+                 app_group.new_reference(plugin_swift)
+               else
+                 project.main_group.new_reference(plugin_swift)
+               end
+app_additions << plugin_ref
+
+app_additions.compact.uniq.each do |ref|
   next if app.source_build_phase.files_references.any? { |r| r.path.to_s == ref.path.to_s }
   app.add_file_references([ref])
 end
+
+compiled = app.source_build_phase.files_references.map { |r| File.basename(r.path.to_s) }
+puts "App 编译文件: #{compiled.join(', ')}"
+raise 'QingyinLivePlugin.swift 没有进入 App target' unless compiled.include?('QingyinLivePlugin.swift')
 
 # ---------- 3. 依赖 + 嵌入 ----------
 unless app.dependencies.any? { |d| d.target == widget }
