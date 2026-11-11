@@ -1260,3 +1260,19 @@ textarea:focus {
     transform: translate(-50%, 8px);
   }
 }
+
+/* 诊断日志 */
+.diag-log {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim, #9a9aa8);
+  font-size: 11px;
+  line-height: 1.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
