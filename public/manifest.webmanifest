@@ -1,6 +1,6 @@
 {
-  "name": "轻音",
-  "short_name": "轻音",
+  "name": "K-ON",
+  "short_name": "K-ON",
   "description": "极简音乐播放器，支持第三方音源插件",
   "start_url": "./index.html",
   "display": "standalone",
