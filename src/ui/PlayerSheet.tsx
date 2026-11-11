@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  addToPlaylist,
+  createPlaylist,
   downloadCurrentOr,
   isFavorite,
   next,
@@ -10,6 +12,7 @@ import {
   setPlayerOpen,
   toggleFavorite,
   togglePlay,
+  toggleShuffle,
   useStore,
   playAt,
 } from '../core/store';
@@ -21,6 +24,7 @@ import {
   IconDownload,
   IconHeart,
   IconList,
+  IconShuffle,
   IconNext,
   IconPause,
   IconPlay,
@@ -38,10 +42,14 @@ export function PlayerSheet() {
   const lyricOffset = useStore((s) => s.lyricOffset);
   const quality = useStore((s) => s.quality);
   const queue = useStore((s) => s.queue);
+  const playlists = useStore((s) => s.playlists);
+  const shuffle = useStore((s) => s.shuffle);
   const queueIndex = useStore((s) => s.queueIndex);
   const favorite = useStore((s) => (s.current ? isFavorite(s.current) : false));
 
   const [showQueue, setShowQueue] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const [newPl, setNewPl] = useState('');
   const [dragging, setDragging] = useState<number | null>(null);
   const lyricRef = useRef<HTMLDivElement | null>(null);
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -186,12 +194,70 @@ export function PlayerSheet() {
       </div>
 
       <div className="player-footer">
+        <button
+          className={shuffle ? 'chip chip-btn active' : 'chip chip-btn'}
+          onClick={() => toggleShuffle()}
+        >
+          <IconShuffle size={14} /> {shuffle ? '随机播放' : '顺序播放'}
+        </button>
+        <button className="chip chip-btn" onClick={() => setPicker(true)}>
+          加入歌单
+        </button>
         <span className="chip">{QUALITY_LABEL[quality as Quality]}</span>
         <button className="chip chip-btn" onClick={() => openDetail(current)}>
           歌曲详情
         </button>
         <span className="chip chip-ghost">歌词 {lyrics.length > 0 ? '已同步' : '未找到'}</span>
       </div>
+
+      {picker ? (
+        <div className="queue" onClick={() => setPicker(false)}>
+          <div className="queue-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="queue-header">
+              <div>加入歌单</div>
+              <button className="text-btn" onClick={() => setPicker(false)}>
+                收起
+              </button>
+            </div>
+            <div className="queue-list">
+              {playlists.map((pl) => (
+                <div
+                  className="row"
+                  key={pl.id}
+                  onClick={() => {
+                    addToPlaylist(pl.id, current);
+                    setPicker(false);
+                  }}
+                >
+                  <div className="row-main">
+                    <div className="row-title">{pl.name}</div>
+                    <div className="row-sub">{pl.tracks.length} 首</div>
+                  </div>
+                </div>
+              ))}
+              <div className="pl-create">
+                <input
+                  className="pl-input"
+                  placeholder="新建歌单名称"
+                  value={newPl}
+                  onChange={(e) => setNewPl(e.target.value)}
+                />
+                <button
+                  className="pill-btn"
+                  onClick={() => {
+                    const id = createPlaylist(newPl || '新歌单');
+                    addToPlaylist(id, current);
+                    setNewPl('');
+                    setPicker(false);
+                  }}
+                >
+                  创建并加入
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showQueue ? (
         <div className="queue" onClick={() => setShowQueue(false)}>
