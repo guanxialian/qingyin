@@ -286,7 +286,8 @@ async function main() {
   const row = page.locator('.row').first();
   if (!(await row.count())) {
     console.log('   没有可点的行');
-    await ctx.close();
+
+  await ctx.close();
     await browser.close();
     server.close();
     return;
@@ -326,6 +327,43 @@ async function main() {
   await page.waitForTimeout(1200);
   await page.screenshot({ path: path.join(ROOT, 'shot-e2e-lyric.png') });
 
+  console.log('8) 加入歌单 …');
+  await page.locator('.cover-big').first().click().catch(() => {});
+  await page.waitForTimeout(800);
+  await page.getByText('加入歌单', { exact: true }).first().click().catch(() => {});
+  await page.waitForTimeout(600);
+  await page.locator('.pl-input').last().fill('测试歌单');
+  await page.getByText('创建并加入').first().click().catch(() => {});
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(ROOT, 'shot-e2e-playlist-add.png') });
+  const pl = await page.evaluate(() => {
+    const st = window.__qy?.getState();
+    return { playlists: (st?.playlists ?? []).map((p) => ({ name: p.name, n: p.tracks.length })), shuffle: st?.shuffle };
+  });
+  console.log('   歌单状态:', JSON.stringify(pl));
+
+  console.log('9) 歌单页 + 随机播放 …');
+  await page.locator('.player-close, .icon-btn[aria-label=\"收起\"]').first().click().catch(async () => {
+    await page.keyboard.press('Escape');
+  });
+  await page.waitForTimeout(600);
+  await page.getByRole('button', { name: /收藏/ }).first().click().catch(() => {});
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: /歌单/ }).first().click().catch(() => {});
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: path.join(ROOT, 'shot-e2e-playlists.png') });
+  await page.locator('.row').first().click().catch(() => {});
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: path.join(ROOT, 'shot-e2e-playlist-detail.png') });
+  const pl2 = await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ').slice(0, 200));
+  console.log('   歌单页文本:', pl2);
+
+  console.log('10) 设置页 …');
+  await page.getByRole('button', { name: /设置/ }).first().click().catch(() => {});
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(ROOT, 'shot-e2e-settings.png') });
+  const stText = await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ').slice(0, 220));
+  console.log('   设置页文本:', stText);
   await ctx.close();
   await browser.close();
   server.close();
