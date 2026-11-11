@@ -11,14 +11,22 @@ import {
 } from '../core/store';
 import { QUALITY_LABEL, type Quality } from '../core/types';
 import { engine } from '../core/engine';
-import { getLogLines } from '../core/debug';
+import { getLogLines, clearLog } from '../core/debug';
+import { cacheUsage, clearCacheFiles } from '../core/download';
 import { liveStatus, liveSupported } from '../core/live';
-import { IconLink, IconPlus, IconTrash } from './icons';
+import { IconLink, IconPlus, IconRefresh, IconTrash } from './icons';
 
 const SAMPLE_PLUGIN =
   'https://gitee.com/maotoumao/MusicFreePlugins/raw/v0.1/dist/bilibili/index.js';
 
 const QUALITIES: Quality[] = ['low', 'standard', 'high', 'super'];
+
+function fmtSize(bytes: number): string {
+  if (!bytes) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+  return mb.toFixed(1) + ' MB';
+}
 
 export function Settings() {
   const plugins = useStore((s) => s.plugins);
@@ -28,6 +36,25 @@ export function Settings() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
+  const [cache, setCache] = useState({ bytes: 0, count: 0 });
+  const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    void cacheUsage().then(setCache);
+  }, []);
+
+  const refreshCache = () => {
+    void cacheUsage().then(setCache);
+  };
+
+  const clearCache = async () => {
+    setClearing(true);
+    const freed = await clearCacheFiles();
+    setClearing(false);
+    refreshCache();
+    clearLog();
+    toast(freed > 0 ? '已清理 ' + fmtSize(freed) + ' 缓存' : '缓存已经是空的');
+  };
   const [err, setErr] = useState<string | null>(null);
   const [proxyDraft, setProxyDraft] = useState(proxy);
   const [liveText, setLiveText] = useState(liveSupported() ? '检查中…' : '无原生插件');
@@ -165,6 +192,29 @@ export function Settings() {
               </button>
             </>
           ) : null}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-title">存储</div>
+        <div className="settings-card">
+          <div className="row-between">
+            <div>
+              <div className="row-title">临时缓存</div>
+              <div className="row-sub">
+                {cache.count} 个文件 · 约 {fmtSize(cache.bytes)}（在线放不了的歌会自动缓存到本地）
+              </div>
+            </div>
+            <button className="ghost-btn" disabled={clearing} onClick={() => void clearCache()}>
+              {clearing ? '清理中…' : '清理'}
+            </button>
+          </div>
+          <button className="text-btn" onClick={refreshCache}>
+            <IconRefresh size={14} /> 刷新用量
+          </button>
+        </div>
+        <div className="settings-hint">
+          清理不会删除你「下载」的歌，只清掉为了播放而临时缓存的文件。
         </div>
       </section>
 
