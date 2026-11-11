@@ -18,6 +18,7 @@ import { startLive, updateLive, endLive } from './live';
 import { downloadTrack, removeDownloadFile } from './download';
 import { loadJSON, saveJSON } from './storage';
 import { setProxyBase } from './http';
+import { logEvent } from './debug';
 import type {
   InstalledPlugin,
   MusicItem,
@@ -447,6 +448,8 @@ function pushHistory(track: Track) {
 }
 
 /** 已下载的歌曲：本地文件优先，不依赖网络和音源插件 */
+let autoPlay = false;
+
 export function findDownload(track: Track): DownloadRecord | undefined {
   const key = trackKey(track, track.platform);
   return state.downloads.find((d) => (d.track ? trackKey(d.track, track.platform) : d.key.split(':').slice(0, 2).join(':')) === key && d.uri);
@@ -464,7 +467,8 @@ export function downloadToTrack(rec: DownloadRecord): Track {
   );
 }
 
-export async function playTrack(track: Track, list?: Track[], index?: number) {
+export async function playTrack(track: Track, list?: Track[], index?: number, auto = false) {
+  autoPlay = auto;
   const queue = list ?? state.queue;
   const qIndex =
     typeof index === 'number'
@@ -527,16 +531,33 @@ export async function playTrack(track: Track, list?: Track[], index?: number) {
     void enrichTrack(api, track);
   } catch (e) {
     console.error("[qingyin]", e);
-    const message = (e as Error).message || '播放失败';
+    const message = describePlayError(e);
+    logEvent('play.fail', `${track.title} | ${(e as Error).message ?? e}`);
     setState({ preparing: false, playing: false, lyricLoading: false });
+    if (autoPlay && state.queue.length > 1) {
+      toast(`${message}，自动下一首`);
+      setTimeout(() => void next(true), 900);
+      return;
+    }
     toast(message);
   }
 }
 
-export async function playAt(index: number) {
+/** 把底层报错翻译成用户能懂的提示 */
+function describePlayError(e: unknown): string {
+  const raw = String((e as Error)?.message ?? e ?? '');
+  if (/\b403\b|forbidden|permission/i.test(raw)) return '这首歌有版权或会员限制';
+  if (/\b404\b|-404|not found|已删除/i.test(raw)) return '视频已失效或被删除';
+  if (/dash|音频流|no audio/i.test(raw)) return '这个视频没有可用的音频流';
+  if (/timeout|network|fetch|NetworkError|Load failed/i.test(raw)) return '网络不给力，稍后再试';
+  if (/not supported|MEDIA_ERR|decode/i.test(raw)) return '播放器不支持这个音频格式';
+  return raw || '播放失败';
+}
+
+export async function playAt(index: number, auto = false) {
   const track = state.queue[index];
   if (!track) return;
-  await playTrack(track, state.queue, index);
+  await playTrack(track, state.queue, index, auto);
 }
 
 export async function next(auto = false) {
@@ -551,7 +572,7 @@ export async function next(auto = false) {
     await playAt(0);
     return;
   }
-  await playAt(queueIndex + 1);
+  await playAt(queueIndex + 1, auto);
 }
 
 export async function prev() {
@@ -662,8 +683,9 @@ async function loadLyrics(api: ReturnType<typeof apiFor>, track: Track) {
     setState({ lyrics: [], lyricLoading: false });
     return;
   }
-  applyRawLyric(raw);
+  const parsed = applyRawLyric(raw);
   if (state.current) {
+    updateLive(state.current, parsed, state.position, state.duration, state.playing, true);
     void engine.updateNowPlaying({
       ...metaOf(state.current),
       playing: state.playing,
