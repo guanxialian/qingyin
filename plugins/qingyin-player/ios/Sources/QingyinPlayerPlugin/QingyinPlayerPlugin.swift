@@ -25,6 +25,7 @@ public class QingyinPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
 
         audio.onTime = { [weak self] position in
             self?.notifyListeners("timeupdate", data: ["position": position])
+            UserDefaults.standard.set(position, forKey: "qy.position")
             NotificationCenter.default.post(name: Notification.Name("QyPlayerTick"), object: nil, userInfo: ["position": position])
         }
         audio.onState = { [weak self] state, duration in

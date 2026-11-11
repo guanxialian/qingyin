@@ -38,6 +38,18 @@ export async function liveStatus(): Promise<string> {
   }
 }
 
+/** 诊断用：原生侧同步到第几行、更新了多少次 */
+export async function liveStats(): Promise<string> {
+  const plugin = bridge() as (LiveBridge & { stats?: () => Promise<Record<string, unknown>> }) | null;
+  if (!plugin?.stats) return '无统计（未安装原生插件）';
+  try {
+    const s = await plugin.stats();
+    return `歌词 ${s.lines ?? 0} 行 · 已同步 ${s.updates ?? 0} 次 · 卡片 ${s.activity ? '有' : '无'} · 封面 ${s.cover ? 'y' : 'n'}${s.error ? ` · 错误 ${String(s.error)}` : ''}`;
+  } catch (e) {
+    return `统计失败: ${(e as Error)?.message ?? e}`;
+  }
+}
+
 let currentTrackId: string | null = null;
 let lastError = '';
 

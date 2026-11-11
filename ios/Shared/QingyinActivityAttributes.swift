@@ -13,6 +13,8 @@ struct QingyinActivityAttributes: ActivityAttributes {
         var artist: String
         /// 封面地址
         var coverUrl: String
+        /// 缩略封面（base64 JPEG），实时活动视图里直接解码，避免扩展里异步拉图
+        var coverB64: String
         /// 当前正在唱的这一行
         var lyric: String
         /// 下一行（未到时间时给下方留个预告）

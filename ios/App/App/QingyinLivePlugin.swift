@@ -13,6 +13,7 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "end", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "supported", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setLyrics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
     ]
 
     override public func load() {
@@ -71,6 +72,14 @@ public class QingyinLivePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         LiveActivityManager.shared.setLyrics(lines: lines)
         call.resolve(["ok": true, "count": lines.count])
+    }
+
+    @objc func stats(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else {
+            call.resolve(["supported": false])
+            return
+        }
+        call.resolve(LiveActivityManager.shared.stats())
     }
 
     @objc func update(_ call: CAPPluginCall) {

@@ -1,3 +1,4 @@
+import { logEvent } from './debug';
 import { Capacitor } from '@capacitor/core';
 
 export type EngineEvent =
@@ -153,9 +154,11 @@ class AudioEngine {
     this.duration = meta.duration ?? 0;
     if (this.native) {
       await this.bindNative();
+      const safe = filterNativeHeaders(headers);
+      void logEvent('play.src', `${hostOf(url)} | ${Object.keys(safe).join(',')}`);
       await this.native.load({
         url,
-        headers: headers ?? {},
+        headers: safe,
         title: meta.title,
         artist: meta.artist,
         album: meta.album,
@@ -260,6 +263,28 @@ export function updateWebMediaSession(meta: NowPlayingMeta & { playing?: boolean
     ms.playbackState = meta.playing === false ? 'paused' : 'playing';
   } catch {
     /* 某些浏览器不支持 */
+  }
+}
+
+/** AVFoundation 不接受 Host/Connection 这类逐跳头，传了会直接「无法打开」 */
+const DROP_NATIVE_HEADERS = new Set(['host', 'connection', 'accept-encoding', 'content-length', 'transfer-encoding']);
+
+function filterNativeHeaders(headers?: Record<string, string>): Record<string, string> {
+  if (!headers) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (!v) continue;
+    if (DROP_NATIVE_HEADERS.has(k.toLowerCase())) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'invalid';
   }
 }
 

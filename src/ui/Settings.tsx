@@ -13,7 +13,7 @@ import { QUALITY_LABEL, type Quality } from '../core/types';
 import { engine } from '../core/engine';
 import { getLogLines, clearLog } from '../core/debug';
 import { cacheUsage, clearCacheFiles } from '../core/download';
-import { liveStatus, liveSupported } from '../core/live';
+import { liveStats, liveStatus, liveSupported } from '../core/live';
 import { IconLink, IconPlus, IconRefresh, IconTrash } from './icons';
 
 const SAMPLE_PLUGIN =
@@ -58,6 +58,7 @@ export function Settings() {
   const [err, setErr] = useState<string | null>(null);
   const [proxyDraft, setProxyDraft] = useState(proxy);
   const [liveText, setLiveText] = useState(liveSupported() ? '检查中…' : '无原生插件');
+  const [liveDetail, setLiveDetail] = useState('');
   const [refresh, setRefresh] = useState(0);
   const logs = getLogLines();
   const envText = `${/iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : navigator.platform || 'Web'} · ${(navigator.userAgent.match(/OS (\d+[_\d]+)/)?.[1] ?? '').replace(/_/g, '.')}`;
@@ -69,6 +70,7 @@ export function Settings() {
     }
     let alive = true;
     void liveStatus().then((t) => alive && setLiveText(t));
+    void liveStats().then((t) => alive && setLiveDetail(t));
     return () => {
       alive = false;
     };
@@ -292,6 +294,12 @@ export function Settings() {
             <span>灵动岛 / 实时活动</span>
             <span className="muted">{liveText}</span>
           </div>
+          {liveDetail ? (
+            <div className="about-row">
+              <span>歌词同步</span>
+              <span className="muted">{liveDetail}</span>
+            </div>
+          ) : null}
           {logs.length ? (
             <pre className="diag-log">{logs.join('\n')}</pre>
           ) : (
