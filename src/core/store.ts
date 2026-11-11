@@ -14,6 +14,7 @@ import {
 } from './plugin';
 import { parseLrc, mergeTranslation, type LrcLine } from './lrc';
 import { fetchFallbackLyric } from './lyrics';
+import { fixBilibiliSource } from './bili';
 import { startLive, updateLive, endLive } from './live';
 import { downloadTrack, removeDownloadFile } from './download';
 import { loadJSON, saveJSON } from './storage';
@@ -514,7 +515,7 @@ export async function playTrack(track: Track, list?: Track[], index?: number, au
 
   try {
     const api = apiFor(track.platform);
-    const source = await pluginMediaSource(api, track, state.quality);
+    const source = await fixBilibiliSource(track, await pluginMediaSource(api, track, state.quality));
     const meta = {
       title: track.title,
       artist: track.artist,
@@ -648,7 +649,7 @@ export function setQuality(quality: Quality) {
 export async function reloadSource(track: Track) {
   try {
     const api = apiFor(track.platform);
-    const source = await pluginMediaSource(api, track, state.quality);
+    const source = await fixBilibiliSource(track, await pluginMediaSource(api, track, state.quality));
     const position = state.position;
     await engine.load(source.url, source.headers, metaOf(track));
     if (position > 1) await engine.seek(position);
