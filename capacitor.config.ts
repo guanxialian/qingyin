@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.qingyin.app',
-  appName: '轻音',
+  appName: 'K-ON',
   webDir: 'dist',
   ios: {
     contentInset: 'never',
