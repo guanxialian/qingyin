@@ -36,6 +36,9 @@ jobs:
       - name: Sync Capacitor iOS project
         run: npx cap sync ios
 
+      - name: Register native plugins
+        run: node scripts/patch-cap-config.mjs
+
       - name: Install CocoaPods
         working-directory: ios/App
         run: pod install --repo-update
