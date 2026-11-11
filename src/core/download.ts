@@ -101,6 +101,29 @@ export async function cacheSource(source: MediaSource, key: string): Promise<str
   return uri.uri;
 }
 
+/** 临时缓存占用（原生端） */
+export async function cacheUsage(): Promise<{ bytes: number; count: number }> {
+  if (!Capacitor.isNativePlatform()) return { bytes: 0, count: 0 };
+  try {
+    const res = await Filesystem.readdir({ path: 'qy-cache', directory: Directory.Cache });
+    let bytes = 0;
+    for (const f of res.files) bytes += Number((f as { size?: number }).size ?? 0);
+    return { bytes, count: res.files.length };
+  } catch {
+    return { bytes: 0, count: 0 };
+  }
+}
+
+/** 清空临时缓存文件 */
+export async function clearCacheFiles(): Promise<number> {
+  if (!Capacitor.isNativePlatform()) return 0;
+  const before = await cacheUsage();
+  await Filesystem.rmdir({ path: 'qy-cache', directory: Directory.Cache, recursive: true }).catch(
+    () => undefined,
+  );
+  return before.bytes;
+}
+
 export interface DownloadResult {
   fileName: string;
   uri?: string;
