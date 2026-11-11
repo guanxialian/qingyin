@@ -1276,3 +1276,58 @@ textarea:focus {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ------------------------------ 歌单 ------------------------------ */
+.pl-head {
+  align-items: center;
+  gap: 8px;
+}
+.pl-name {
+  flex: 1;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pl-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 16px 12px;
+}
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pill-btn.active {
+  border-color: rgba(255, 105, 140, 0.5);
+  background: rgba(255, 105, 140, 0.18);
+  color: #ffd7e2;
+}
+.pl-create {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+}
+.pl-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 14px;
+}
+.chip-btn.active {
+  border-color: rgba(255, 105, 140, 0.55);
+  color: #ffd7e2;
+}
