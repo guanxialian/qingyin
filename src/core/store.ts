@@ -16,7 +16,7 @@ import { parseLrc, mergeTranslation, type LrcLine } from './lrc';
 import { fetchFallbackLyric } from './lyrics';
 import { fixBilibiliSource } from './bili';
 import { startLive, updateLive, endLive } from './live';
-import { downloadTrack, removeDownloadFile } from './download';
+import { downloadTrack, removeDownloadFile, cacheSource } from './download';
 import { loadJSON, saveJSON } from './storage';
 import { setProxyBase } from './http';
 import { logEvent } from './debug';
@@ -523,7 +523,13 @@ export async function playTrack(track: Track, list?: Track[], index?: number, au
       artwork: track.artwork,
       duration: track.duration,
     };
+    pendingSource = source;
+    cacheFallbackTried = false;
     await engine.load(source.url, source.headers, meta);
+    clearStallTimer();
+    stallTimer = setTimeout(() => {
+      if (state.preparing && state.current && pendingSource) void playFromCache('加载超时');
+    }, 9000);
     setState({ preparing: false, playing: true });
     pushHistory(track);
     void engine.updateNowPlaying({ ...meta, playing: true, position: 0 });
@@ -800,6 +806,45 @@ export function setProxy(proxy: string) {
 /* ------------------------------ 引擎事件绑定 ------------------------------ */
 
 let engineBound = false;
+
+/* 在线放不了时的兜底：缓存到本地再播 */
+let pendingSource: { url: string; headers?: Record<string, string> } | null = null;
+let cacheFallbackTried = false;
+let cacheFallbackBusy = false;
+let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearStallTimer() {
+  if (stallTimer) {
+    clearTimeout(stallTimer);
+    stallTimer = null;
+  }
+}
+
+async function playFromCache(reason: string) {
+  const track = state.current;
+  const source = pendingSource;
+  if (!track || !source || cacheFallbackTried || cacheFallbackBusy) return;
+  cacheFallbackTried = true;
+  cacheFallbackBusy = true;
+  clearStallTimer();
+  logEvent('play.cache', reason + ' | ' + track.title);
+  setState({ preparing: true });
+  toast('正在缓存这首，马上播放…');
+  try {
+    const uri = await cacheSource(source, track.platform + ':' + String(track.id));
+    const meta = metaOf(track);
+    await engine.load(uri, undefined, meta);
+    setState({ preparing: false, playing: true, duration: track.duration ?? state.duration });
+    void engine.updateNowPlaying({ ...meta, playing: true, position: 0, duration: track.duration ?? 0 });
+  } catch (e) {
+    console.error('[qingyin] cache fallback failed', e);
+    logEvent('play.cache.err', String((e as Error).message ?? e));
+    setState({ preparing: false, playing: false });
+    toast(describePlayError(e));
+  } finally {
+    cacheFallbackBusy = false;
+  }
+}
 export function initStore() {
   if (engineBound) return;
   engineBound = true;
@@ -820,6 +865,7 @@ export function initStore() {
         }
         break;
       case 'durationchange':
+        clearStallTimer();
         setState({ duration: e.duration });
         break;
       case 'play':
@@ -835,6 +881,7 @@ export function initStore() {
         }
         break;
       case 'ended':
+        clearStallTimer();
         endLive();
         void next(true);
         break;
@@ -856,6 +903,11 @@ export function initStore() {
         }
         break;
       case 'error':
+        if (engine.usesNativePlayer && pendingSource && !cacheFallbackTried) {
+          void playFromCache('播放器报错：' + e.message);
+          break;
+        }
+        clearStallTimer();
         setState({ playing: false, preparing: false });
         toast(e.message);
         break;
