@@ -26,7 +26,7 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-async function proxyUpstreamOnce(urlStr, extra = {}) {
+async function proxyUpstreamOnce(urlStr, extra = {}, method = 'GET', body = null) {
   const u = new URL(urlStr);
   const headers = {
     'user-agent':
@@ -46,7 +46,7 @@ async function proxyUpstreamOnce(urlStr, extra = {}) {
         hostname: u.hostname,
         port: u.port || (u.protocol === 'https:' ? 443 : 80),
         path: u.pathname + u.search,
-        method: 'GET',
+        method,
         headers,
       },
       (res) => {
@@ -71,22 +71,30 @@ async function proxyUpstreamOnce(urlStr, extra = {}) {
     );
     req.on('error', reject);
     req.setTimeout(20000, () => req.destroy(new Error('upstream timeout')));
+    if (body && body.length) req.write(body);
     req.end();
   });
 }
 
 /** 跟随最多 5 次 3xx（B 站 api 有时会 307 到别的节点） */
-async function proxyUpstream(urlStr, extra = {}) {
+async function proxyUpstream(urlStr, extra = {}, method = 'GET', body = null) {
   let url = urlStr;
+  let m = method;
+  let b = body;
   for (let i = 0; i < 5; i++) {
-    const up = await proxyUpstreamOnce(url, extra);
+    const up = await proxyUpstreamOnce(url, extra, m, b);
+    // 307/308 保留原方法与请求体，301/302 按浏览器习惯退化成 GET
+    if (up.status === 301 || up.status === 302) {
+      m = 'GET';
+      b = null;
+    }
     if (up.status >= 300 && up.status < 400 && up.headers.location) {
       url = new URL(up.headers.location, url).toString();
       continue;
     }
     return up;
   }
-  return proxyUpstreamOnce(url, extra);
+  return proxyUpstreamOnce(url, extra, m, b);
 }
 
 function decodeQyHdr(raw) {
@@ -105,7 +113,7 @@ function startServer() {
       const cors = {
         'access-control-allow-origin': '*',
         'access-control-allow-headers': '*',
-        'access-control-allow-methods': 'GET,HEAD,OPTIONS',
+        'access-control-allow-methods': 'GET,HEAD,POST,OPTIONS',
         'access-control-expose-headers': 'content-length,content-range,accept-ranges',
       };
       if (req.method === 'OPTIONS') {
@@ -118,8 +126,18 @@ function startServer() {
         return;
       }
       const extra = decodeQyHdr(req.headers['x-qy-hdr']);
+      let body = null;
+      if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        body = Buffer.concat(chunks);
+        if (body.length) {
+          extra['content-type'] = String(req.headers['content-type'] ?? 'application/json');
+          extra['content-length'] = String(body.length);
+        }
+      }
       try {
-        const up = await proxyUpstream(target, extra);
+        const up = await proxyUpstream(target, extra, req.method || 'GET', body);
         const out = {};
         for (const k of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
           const v = up.headers[k];
@@ -281,6 +299,25 @@ async function main() {
     return { rawLen: raw.length, head: raw.slice(0, 80), lines: lines.length, sample: lines[0] };
   });
   console.log('   歌词:', JSON.stringify(lore));
+
+  console.log('4.8) 点作者进去看作品 …');
+  const artistCard = page.locator('.artist-card').first();
+  if (await artistCard.count()) {
+    const artistLabel = (await artistCard.innerText()).replace(/\s+/g, ' ').trim();
+    await artistCard.click();
+    await page.waitForTimeout(6000);
+    const ov = await page.evaluate(() => {
+      const el = document.querySelector('.overlay-page');
+      return el ? el.innerText.replace(/\s+/g, ' ').slice(0, 220) : '(没有打开作者页)';
+    });
+    console.log(`   作者: ${artistLabel}`);
+    console.log(`   作者页: ${ov}`);
+    await page.screenshot({ path: 'shot-e2e-artist.png' });
+    await page.locator('.overlay-header .icon-btn').first().click();
+    await page.waitForTimeout(500);
+  } else {
+    console.log('   没有作者卡片（可能被风控）');
+  }
 
   console.log('5) 点第一首播放 …');
   const row = page.locator('.row').first();

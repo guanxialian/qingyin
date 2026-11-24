@@ -101,6 +101,20 @@ export interface Playlist {
   createdAt: number;
 }
 
+/** 搜索结果里的「作者」条目 */
+export interface ArtistRow {
+  key: string;
+  id: string | number;
+  name: string;
+  avatar?: string;
+  fans?: number;
+  works?: number;
+  description?: string;
+  platform: string;
+  /** 原始条目，调用 getArtistWorks 时要原样传回 */
+  raw: MusicItem;
+}
+
 export type Quality = 'low' | 'standard' | 'high' | 'super';
 
 export const QUALITY_LABEL: Record<Quality, string> = {

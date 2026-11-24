@@ -1331,3 +1331,71 @@ textarea:focus {
   border-color: rgba(255, 105, 140, 0.55);
   color: #ffd7e2;
 }
+
+/* ---------- 搜索页：作者横滑 ---------- */
+.artist-strip {
+  margin: 2px 0 6px;
+}
+.artist-strip-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 6px 4px 8px;
+  letter-spacing: 0.08em;
+}
+.artist-cards {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 0 2px 6px;
+  scrollbar-width: none;
+}
+.artist-cards::-webkit-scrollbar {
+  display: none;
+}
+.artist-card {
+  flex: 0 0 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  transition: transform 0.12s ease;
+}
+.artist-card:active {
+  transform: scale(0.97);
+}
+.artist-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--card-strong);
+  color: var(--text-dim);
+}
+.artist-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.artist-name {
+  font-size: 12.5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artist-meta {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.search-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 2px 6px 8px;
+}

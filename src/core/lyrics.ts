@@ -45,10 +45,9 @@ interface NeSong {
   duration?: number;
 }
 
-async function neteaseSearch(name: string, singer: string): Promise<NeSong[]> {
-  const kw = singer ? `${name} ${singer}` : name;
+async function neteaseSearch(q: string): Promise<NeSong[]> {
   const url =
-    'https://music.163.com/api/search/get?type=1&offset=0&limit=10&s=' + encodeURIComponent(kw);
+    'https://music.163.com/api/search/get?type=1&offset=0&limit=10&s=' + encodeURIComponent(q);
   try {
     const res = await httpRequest<{ result?: { songs?: NeSong[] } }>({
       url,
@@ -81,10 +80,10 @@ async function neteaseLyric(id: number): Promise<string> {
 }
 
 /** 歌名相似度：命中包含关系优先，其次取最短的匹配（避免「XX 翻唱版」这种超长标题） */
-function pickBest(songs: NeSong[], name: string, singer: string): NeSong | undefined {
+function rankSongs(songs: NeSong[], name: string, singer: string): NeSong[] {
   const n = norm(name);
   const s = norm(firstArtist(singer));
-  const scored = songs
+  return songs
     .map((song) => {
       const sn = norm(song.name);
       const singerNames = (song.artists ?? []).map((a) => norm(a.name)).join(' ');
@@ -95,17 +94,32 @@ function pickBest(songs: NeSong[], name: string, singer: string): NeSong | undef
       score -= Math.max(0, sn.length - n.length) * 0.5;
       return { song, score };
     })
-    .sort((a, b) => b.score - a.score);
-  return scored[0]?.score && scored[0].score > 30 ? scored[0].song : undefined;
+    .filter((x) => x.score > 30)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.song);
 }
 
+/**
+ * 网易云：先用「歌名 歌手」搜，搜不到/没歌词再只用歌名；
+ * 每个查询都按相似度排前几位逐个取歌词，避免第一条恰好没有歌词。
+ */
 async function fromNetease(title: string, artist: string): Promise<string> {
   const name = cleanTitle(title);
   if (!name) return '';
-  const songs = await neteaseSearch(name, firstArtist(artist));
-  const best = pickBest(songs, name, artist);
-  if (!best) return '';
-  return neteaseLyric(best.id);
+  const singer = firstArtist(artist || '');
+  const queries = singer && singer !== name ? [`${name} ${singer}`, name] : [name];
+  const tried = new Set<number>();
+  for (const q of queries) {
+    const songs = await neteaseSearch(q);
+    const ranked = rankSongs(songs, name, singer);
+    for (const song of ranked.slice(0, 3)) {
+      if (tried.has(song.id)) continue;
+      tried.add(song.id);
+      const lrc = await neteaseLyric(song.id);
+      if (lrc.trim()) return lrc;
+    }
+  }
+  return '';
 }
 
 interface LrclibItem {

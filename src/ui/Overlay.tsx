@@ -59,7 +59,7 @@ export function OverlayPage() {
           ))}
         </div>
         {!loading && tracks.length === 0 && !error ? (
-          <EmptyState title="这个榜单没有内容" />
+          <EmptyState title="这里还没有内容" />
         ) : null}
         {tracks.length > 0 && !end ? (
           <button className="ghost-btn block" onClick={() => void loadMoreOverlay()}>

@@ -8,22 +8,26 @@ import {
   pluginMediaSource,
   pluginMusicInfo,
   pluginSearch,
+  pluginArtistWorks,
   pluginTopListDetail,
   pluginTopLists,
   evaluatePlugin,
 } from './plugin';
 import { parseLrc, mergeTranslation, type LrcLine } from './lrc';
 import { fetchFallbackLyric } from './lyrics';
-import { fixBilibiliSource } from './bili';
+import { fetchBiliArtistWorks, fixBilibiliSource } from './bili';
 import { startLive, updateLive, endLive, syncLiveLyrics } from './live';
 import { downloadTrack, removeDownloadFile, cacheSource } from './download';
 import { loadJSON, saveJSON } from './storage';
 import { setProxyBase } from './http';
 import { logEvent } from './debug';
+import { dedupeTracks, keywordVariants, toArtistRow } from './search';
 import type {
+  ArtistRow,
   InstalledPlugin,
   MusicItem,
   Playlist,
+  PluginApi,
   Quality,
   TopListGroup,
   TopListItem,
@@ -42,10 +46,14 @@ export interface SearchState {
   keyword: string;
   type: 'music' | 'album' | 'artist';
   results: Track[];
+  /** 搜到的作者（来自同一次搜索的 artist 结果） */
+  artists: ArtistRow[];
   loading: boolean;
   page: number;
   isEnd: boolean;
   error: string | null;
+  /** 用清洗后的关键词又找过一次且找到了东西，给用户一句提示 */
+  fallbackNote: string | null;
   searched: boolean;
 }
 
@@ -147,10 +155,12 @@ let state: AppState = {
     keyword: '',
     type: 'music',
     results: [],
+    artists: [],
     loading: false,
     page: 1,
     isEnd: true,
     error: null,
+    fallbackNote: null,
     searched: false,
   },
   discover: { groups: [], platform: null, loading: false, error: null },
@@ -300,6 +310,46 @@ export function setTab(tab: TabId) {
   setState({ tab, overlay: null });
 }
 
+/** 搜索失败时给一句人话 */
+function describeSearchError(e: unknown): string {
+  const msg = (e as Error)?.message ?? '';
+  if (/412|风控|risk/i.test(msg)) return 'B站风控了，等十几秒再搜一次';
+  if (/timeout|超时/i.test(msg)) return '搜索超时，检查一下网络';
+  return msg || '搜索失败';
+}
+
+/**
+ * 先按原关键词搜；结果不多时再用「去掉【】/BV号/版本说明」「去掉空格」的版本补搜，合并去重。
+ * B 站搜索对这些装饰符很敏感，用户打全名却搜不到多半是这个原因。
+ */
+async function searchWithFallback(
+  api: PluginApi,
+  keyword: string,
+  page: number,
+  type: 'music' | 'album' = 'music',
+) {
+  const variants = page === 1 ? keywordVariants(keyword) : [keyword];
+  let merged: MusicItem[] = [];
+  let usedKeyword = keyword;
+  let lastError: unknown = null;
+  let isEnd = true;
+  for (const kw of variants) {
+    try {
+      const res = await pluginSearch(api, kw, page, type);
+      if (res.data.length > 0) {
+        if (merged.length === 0) usedKeyword = kw;
+        merged = [...merged, ...res.data];
+        isEnd = res.isEnd ?? true;
+      }
+      if (merged.length >= 24) break;
+    } catch (e) {
+      console.error('[qingyin]', e);
+      lastError = e;
+    }
+  }
+  return { res: { data: merged, isEnd }, usedKeyword, lastError };
+}
+
 export async function runSearch(keyword: string, type: SearchState['type'] = 'music') {
   const kw = keyword.trim();
   if (!kw) return;
@@ -318,31 +368,67 @@ export async function runSearch(keyword: string, type: SearchState['type'] = 'mu
       keyword: kw,
       type,
       results: [],
+      artists: [],
       loading: true,
       page: 1,
       isEnd: false,
       error: null,
+      fallbackNote: null,
       searched: true,
     },
   });
-  try {
-    const api = apiFor(plugin.platform);
-    const res = await pluginSearch(api, kw, 1, type);
+  const api = apiFor(plugin.platform);
+  const [musicOut, artistOut] = await Promise.allSettled([
+    searchWithFallback(api, kw, 1, type === 'album' ? 'album' : 'music'),
+    pluginSearch(api, kw, 1, 'artist'),
+  ]);
+
+  const artists =
+    artistOut.status === 'fulfilled'
+      ? artistOut.value.data
+          .map((it) => toArtistRow(it, plugin.platform))
+          .sort(
+            (a, b) =>
+              (b.fans ?? 0) - (a.fans ?? 0) ||
+              (b.works ?? 0) - (a.works ?? 0) ||
+              a.name.length - b.name.length,
+          )
+      : [];
+  if (artistOut.status === 'rejected') console.error('[qingyin]', artistOut.reason);
+
+  if (musicOut.status === 'rejected') {
     setState({
       search: {
         ...state.search,
-        results: res.data.map((it) => ({ ...it, platform: plugin.platform })),
+        artists,
         loading: false,
-        isEnd: res.isEnd ?? true,
-        error: res.data.length === 0 ? '没有搜到结果' : null,
+        error: describeSearchError(musicOut.reason),
+        isEnd: true,
       },
     });
-  } catch (e) {
-    console.error("[qingyin]", e);
-    setState({
-      search: { ...state.search, loading: false, error: (e as Error).message || '搜索失败', isEnd: true },
-    });
+    return;
   }
+
+  const { res, usedKeyword, lastError } = musicOut.value;
+  const results = dedupeTracks(res.data.map((it) => ({ ...it, platform: plugin.platform })) as Track[]);
+  const note =
+    results.length > 0 && usedKeyword !== kw ? `按「${usedKeyword}」找到 ${results.length} 首` : null;
+  setState({
+    search: {
+      ...state.search,
+      artists,
+      results,
+      loading: false,
+      isEnd: res.isEnd ?? true,
+      fallbackNote: note,
+      error:
+        results.length === 0 && artists.length === 0
+          ? lastError
+            ? describeSearchError(lastError)
+            : '没有搜到结果，换个说法或只打歌手名试试'
+          : null,
+    },
+  });
 }
 
 export async function loadMoreSearch() {
@@ -358,18 +444,18 @@ export async function loadMoreSearch() {
     setState({
       search: {
         ...state.search,
-        results: [
+        results: dedupeTracks([
           ...state.search.results,
-          ...res.data.map((it) => ({ ...it, platform: plugin.platform })),
-        ],
+          ...res.data.map((it) => ({ ...it, platform: plugin.platform }) as Track),
+        ]),
         loading: false,
         page: nextPage,
-        isEnd: res.isEnd ?? true,
+        isEnd: res.isEnd ?? res.data.length === 0,
       },
     });
   } catch (e) {
     console.error("[qingyin]", e);
-    setState({ search: { ...state.search, loading: false, error: (e as Error).message } });
+    setState({ search: { ...state.search, loading: false, error: describeSearchError(e) } });
   }
 }
 
@@ -418,23 +504,121 @@ export async function openTopList(title: string, item: TopListItem, platform: st
   }
 }
 
+/** 拉作者作品的共享逻辑：先用插件，插件挂了（风控/接口变更）就用自己签名的空间接口 */
+/** 插件自带的主页接口被风控后，5 分钟内不再尝试。 */
+let pluginArtistBlockedUntil = 0;
+
+/** 作者作品缓存：B 站接口风控频繁，同一 UP 主 10 分钟内不重复请求。 */
+const artistWorksCache = new Map<string, { data: MusicItem[]; isEnd: boolean; at: number }>();
+const ARTIST_CACHE_MS = 10 * 60 * 1000;
+
+async function fetchArtistWorksCached(
+  platform: string,
+  item: MusicItem,
+  page: number,
+  name?: string,
+): Promise<{ data: MusicItem[]; isEnd: boolean }> {
+  const id = (item as { id?: string | number }).id ?? '';
+  const key = `${platform}:${id}:${page}`;
+  const hit = artistWorksCache.get(key);
+  if (hit && Date.now() - hit.at < ARTIST_CACHE_MS) return { data: hit.data, isEnd: hit.isEnd };
+  const res = await fetchArtistWorks(platform, item, page, name);
+  if (res.data.length > 0) artistWorksCache.set(key, { ...res, at: Date.now() });
+  return res;
+}
+
+async function fetchArtistWorks(
+  platform: string,
+  item: MusicItem,
+  page: number,
+  name?: string,
+): Promise<{ data: MusicItem[]; isEnd: boolean }> {
+  if (Date.now() > pluginArtistBlockedUntil) {
+    try {
+      const res = await pluginArtistWorks(apiFor(platform), item, page);
+      if (res.data.length > 0 || page > 1) return res;
+    } catch (e) {
+      console.error('[qingyin]', e);
+      pluginArtistBlockedUntil = Date.now() + 5 * 60 * 1000;
+    }
+  }
+  if (platform === 'bilibili') {
+    const mid = (item as { id?: string | number }).id;
+    if (mid != null) {
+      const title = name ?? String((item as { name?: string }).name ?? '');
+      return fetchBiliArtistWorks(String(mid), title || String(mid), page);
+    }
+  }
+  throw new Error('作者主页取不到作品，可能是 B 站风控，稍后再试');
+}
+
+/** 点作者：拉他/她的全部投稿 */
+export async function openArtist(artist: ArtistRow) {
+  setState({
+    overlay: { kind: 'artist', title: artist.name, item: artist.raw, platform: artist.platform },
+    overlayTracks: [],
+    overlayLoading: true,
+    overlayError: null,
+    overlayPage: 1,
+    overlayEnd: false,
+  });
+
+  /** 主页接口取不到时，用「按名字搜」兜底，保证点进去总有东西可听。 */
+  const searchInstead = async (reason: string) => {
+    let tracks: Track[] = [];
+    try {
+      const api = apiFor(artist.platform);
+      const fb = await searchWithFallback(api, artist.name, 1);
+      tracks = dedupeTracks(fb.res.data.map((it) => ({ ...it, platform: artist.platform }) as Track));
+    } catch (e) {
+      console.error('[qingyin]', e);
+    }
+    setState({
+      overlayTracks: tracks,
+      overlayLoading: false,
+      overlayEnd: true,
+      overlayError: tracks.length > 0 ? `${reason}，先按名字搜到 ${tracks.length} 首` : `${reason}，也没搜到相关内容`,
+    });
+  };
+
+  try {
+    const res = await fetchArtistWorksCached(artist.platform, artist.raw, 1, artist.name);
+    if (res.data.length === 0) {
+      await searchInstead('B站没有返回这位 UP 的主页投稿');
+      return;
+    }
+    setState({
+      overlayTracks: res.data.map((it) => ({ ...it, platform: artist.platform }) as Track),
+      overlayLoading: false,
+      overlayEnd: res.isEnd ?? true,
+      overlayError: null,
+    });
+  } catch (e) {
+    console.error('[qingyin]', e);
+    await searchInstead(describeSearchError(e));
+  }
+}
+
 export async function loadMoreOverlay() {
   const o = state.overlay;
-  if (!o || o.kind !== 'toplist' || state.overlayLoading || state.overlayEnd) return;
+  if (!o || state.overlayLoading || state.overlayEnd) return;
+  if (o.kind !== 'toplist' && o.kind !== 'artist') return;
   const page = state.overlayPage + 1;
   setState({ overlayLoading: true });
   try {
-    const api = apiFor(o.platform);
-    const res = await pluginTopListDetail(api, o.item, page);
+    const res =
+      o.kind === 'artist'
+        ? await fetchArtistWorksCached(o.platform, o.item, page, o.title)
+        : await pluginTopListDetail(apiFor(o.platform), o.item, page);
     setState({
-      overlayTracks: [...state.overlayTracks, ...res.data.map((it) => ({ ...it, platform: o.platform }))],
+      overlayTracks: [...state.overlayTracks, ...res.data.map((it) => ({ ...it, platform: o.platform }) as Track)],
       overlayPage: page,
       overlayLoading: false,
       overlayEnd: res.isEnd ?? true,
     });
   } catch (e) {
     console.error("[qingyin]", e);
-    setState({ overlayLoading: false, overlayError: (e as Error).message });
+    setState({ overlayLoading: false, overlayError: describeSearchError(e) });
   }
 }
 

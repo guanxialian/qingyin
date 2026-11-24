@@ -159,6 +159,19 @@ export async function pluginTopListDetail(api: PluginApi, item: unknown, page = 
   };
 }
 
+export async function pluginArtistWorks(api: PluginApi, item: MusicItem, page = 1) {
+  if (!api.getArtistWorks) throw new Error('该音源不支持查看作者作品');
+  const res = await withTimeout(
+    Promise.resolve(api.getArtistWorks(item, page, 'music')),
+    30000,
+    '加载作者作品',
+  );
+  return {
+    isEnd: res?.isEnd ?? true,
+    data: (res?.data ?? []).map((it) => normalizeTrack(it)) as MusicItem[],
+  };
+}
+
 export async function pluginMediaSource(
   api: PluginApi,
   item: MusicItem,

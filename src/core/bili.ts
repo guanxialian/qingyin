@@ -114,3 +114,154 @@ export async function fixBilibiliSource(item: MusicItem, source: MediaSource): P
   }
   return source;
 }
+
+/* -------------------- 作者作品列表（走搜索接口，按 mid 过滤） -------------------- */
+
+const SPACE_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+const SPACE_UA_DESK =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+interface SearchVideo {
+  mid?: number;
+  author?: string;
+  title?: string;
+  bvid?: string;
+  aid?: number;
+  pic?: string;
+  duration?: string;
+  description?: string;
+  pubdate?: number;
+}
+
+function parseClock(v?: string): number {
+  if (!v) return 0;
+  return v.split(':').reduce((acc, part) => acc * 60 + (Number(part) || 0), 0);
+}
+
+function toSearchTrack(v: SearchVideo): MusicItem {
+  const pic = v.pic ?? '';
+  return {
+    id: v.bvid ?? String(v.aid ?? ''),
+    title: (v.title ?? '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&'),
+    artist: v.author ?? '',
+    artwork: pic ? (pic.startsWith('//') ? `https:${pic}` : pic) : undefined,
+    duration: parseClock(v.duration),
+    aid: v.aid,
+    bvid: v.bvid,
+    mid: v.mid,
+    description: v.description,
+    pubdate: v.pubdate,
+  };
+}
+
+interface ArcVideo {
+  aid?: number;
+  bvid?: string;
+  title?: string;
+  pic?: string;
+  duration?: number;
+  author?: string;
+  description?: string;
+  pubdate?: number;
+}
+
+/** 空间接口被风控后先别再去撞，冷却 3 分钟，省得越撞越封。 */
+let spaceBlockedUntil = 0;
+
+/** 老版空间接口（无需 wbi 签名），部分网络环境下比 web 空间接口宽容。 */
+async function fetchSpaceArc(mid: string | number, page: number): Promise<{ data: MusicItem[]; isEnd: boolean }> {
+  const res = await httpRequest<{
+    code?: number;
+    message?: string;
+    data?: { list?: { vlist?: ArcVideo[] }; page?: { count?: number } };
+  }>({
+    url: 'https://api.bilibili.com/x/space/arc/search',
+    params: { mid: String(mid), pn: page, ps: 30, order: 'pubdate', keyword: '', platform: 'web' },
+    headers: {
+      'user-agent': SPACE_UA_DESK,
+      referer: `https://space.bilibili.com/${mid}/video`,
+      origin: 'https://space.bilibili.com',
+      accept: 'application/json, text/plain, */*',
+    },
+    responseType: 'json',
+    timeoutMs: 15000,
+  });
+  const code = res.data?.code;
+  if (code !== 0) throw new Error(`${code === -799 || code === -412 ? '风控' : '空间'} ${code ?? ''} ${res.data?.message ?? ''}`);
+  const vlist = res.data?.data?.list?.vlist ?? [];
+  const count = res.data?.data?.page?.count ?? vlist.length;
+  return {
+    data: vlist.map((v) => ({
+      id: v.bvid ?? String(v.aid ?? ''),
+      title: (v.title ?? '').replace(/<[^>]+>/g, ''),
+      artist: v.author ?? '',
+      artwork: v.pic ? (v.pic.startsWith('//') ? `https:${v.pic}` : v.pic) : undefined,
+      duration: v.duration ?? 0,
+      aid: v.aid,
+      bvid: v.bvid,
+      mid: Number(mid),
+      description: v.description,
+      pubdate: v.pubdate,
+    })),
+    isEnd: page * 30 >= count,
+  };
+}
+
+/**
+ * 取某个 UP 主的投稿：先走空间接口（老接口，无需签名），
+ * 被风控时退回「搜索接口按作者名搜 + 按 mid/作者名过滤」。
+ * 空间接口（space/wbi/arc/search）风控很严，搜索接口正常得多，
+ * 而且这里用的正是搜索结果本身，命中率有保证。
+ * 一「页」对应搜索接口的两页（每页 20 条）。
+ */
+export async function fetchBiliArtistWorks(
+  mid: string | number,
+  name: string,
+  page = 1,
+): Promise<{ data: MusicItem[]; isEnd: boolean }> {
+  if (Date.now() > spaceBlockedUntil) {
+    try {
+      const viaSpace = await fetchSpaceArc(mid, page);
+      if (viaSpace.data.length > 0 || viaSpace.isEnd) return viaSpace;
+    } catch (e) {
+      console.error('[qingyin]', e);
+      spaceBlockedUntil = Date.now() + 3 * 60 * 1000;
+    }
+  }
+  const out: MusicItem[] = [];
+  const seen = new Set<string>();
+  let isEnd = true;
+  for (const sp of [page * 2 - 1, page * 2]) {
+    const res = await httpRequest<{
+      code?: number;
+      message?: string;
+      data?: { result?: SearchVideo[]; numPages?: number; numResults?: number };
+    }>({
+      url: 'https://api.bilibili.com/x/web-interface/search/type',
+      params: { search_type: 'video', keyword: name, page: sp, page_size: 20, platform: 'pc', highlight: 1 },
+      headers: {
+        'user-agent': SPACE_UA,
+        referer: 'https://search.bilibili.com/',
+        origin: 'https://search.bilibili.com',
+        accept: 'application/json, text/plain, */*',
+      },
+      responseType: 'json',
+      timeoutMs: 15000,
+    });
+    if (res.data?.code !== 0) throw new Error(res.data?.message || `搜索返回 ${res.data?.code}`);
+    const list = res.data?.data?.result ?? [];
+    for (const v of list) {
+      const sameAuthor = v.author === name;
+      if (String(v.mid) !== String(mid) && !sameAuthor) continue;
+      const key = v.bvid ?? String(v.aid ?? '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(toSearchTrack(v));
+    }
+    const numPages = res.data?.data?.numPages ?? 1;
+    if (sp >= numPages) break;
+    isEnd = false;
+  }
+  return { data: out, isEnd };
+}
