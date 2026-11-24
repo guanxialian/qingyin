@@ -55,7 +55,7 @@ export function TrackRow({
           {track.album ? ` · ${track.album}` : ''}
         </div>
       </div>
-      {track.duration ? <div className="row-dur">{formatTime(track.duration / 1000)}</div> : null}
+      {track.duration ? <div className="row-dur">{formatTime(track.duration)}</div> : null}
       {onMore ? (
         <button
           className="icon-btn row-more"

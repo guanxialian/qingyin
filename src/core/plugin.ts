@@ -113,12 +113,27 @@ export function normalizeImage(url?: string): string | undefined {
   return url;
 }
 
+/** 时长可能是数字秒，也可能是插件的 "05:12" / "1:02:33" 字符串。 */
+function toSeconds(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return Math.round(v);
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (/^\d+(:\d+){1,2}$/.test(s)) {
+      return s.split(':').reduce((acc, part) => acc * 60 + (Number(part) || 0), 0);
+    }
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+  return undefined;
+}
+
 function normalizeTrack(item: MusicItem): MusicItem {
   return {
     ...item,
     artwork: normalizeImage(item.artwork),
     artist: item.artist ?? '',
     album: item.album ?? '',
+    duration: toSeconds((item as { duration?: unknown }).duration),
   };
 }
 

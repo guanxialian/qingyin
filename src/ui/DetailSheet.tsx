@@ -29,7 +29,7 @@ export function DetailSheet() {
             <div className="detail-artist">{track.artist || '未知歌手'}</div>
             <div className="detail-sub">
               {track.album || '未知专辑'}
-              {track.duration ? ` · ${formatTime(track.duration / 1000)}` : ''}
+              {track.duration ? ` · ${formatTime(track.duration)}` : ''}
             </div>
           </div>
         </div>
